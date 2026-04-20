@@ -3,8 +3,8 @@ import numpy as np
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 
-learning_rate = 0.005
-batch_size = 16
+learning_rate = 0.01
+batch_size = 32
 
 class TimeSeriesDataset(Dataset):
     def __init__(self, X, y):
@@ -22,9 +22,9 @@ class NeuralNetwork(nn.Module):
         super().__init__()
         self.flatten = nn.Flatten()
         self.linear_lrelu_stack = nn.Sequential(
-            nn.Linear(3*4, 9),
+            nn.Linear(3*4, 6),
             nn.LeakyReLU(0.05),
-            nn.Linear(9, 6),
+            nn.Linear(6, 6),
             nn.LeakyReLU(0.05),
             nn.Linear(6, 1),
         )
@@ -44,7 +44,7 @@ def create_dataset(data, window=4):
     z = torch.from_numpy(data).to(torch.float32).unfold(0, window + 1, 1)
 
     X = z[:, :, :window].permute(0, 2, 1)
-    y = z[:, 0, window]
+    y = z[:, 0, window]/z[:, 0, window-1]
 
     return X, y
 
@@ -112,9 +112,39 @@ def human_test_loop(dataloader, model, vranges, mins, device):
             y = y.cpu().detach().numpy()
             for i in range(X.shape[0]):
                 print(f"input: {X[i]*vranges+mins}")
-                print(f"predicted: {output[i]*vranges[0]+mins[0]}")
-                print(f"real value: {y[i]*vranges[0]+mins[0]}")
+                print(f"predicted: {X[i][3][0]*output[i]*vranges[0]+mins[0]}")
+                print(f"real value: {X[i][3][0]*y[i]*vranges[0]+mins[0]}")
 
+def mase(dataloader, model, device):
+    model.eval()
+    
+    abs_errors = []
+    naive_errors = []
+
+    with torch.no_grad():
+        for X, y in dataloader:
+            X = X.to(device=device)
+            y = y.to(device=device).unsqueeze(1)
+
+            pred = model(X)
+
+            y_np = y.cpu().detach().numpy()
+            pred_np = pred.cpu().detach().numpy()
+            
+            abs_errors.append(np.abs(y_np - pred_np))
+
+            last_value = X[:, -1, 0].cpu().numpy().reshape(-1, 1)
+            naive_errors.append(np.abs(y_np - last_value))
+    
+    abs_errors = np.concatenate(abs_errors)
+    naive_errors = np.concatenate(naive_errors)
+
+    mae_model = np.mean(abs_errors)
+    mae_naive = np.mean(naive_errors)
+
+    mase = mae_model / mae_naive
+
+    print(f"MASE: {mase:.6f}")
 
 with open("../data/quarterly_data.json", "r") as file:
     dict_data = json.load(file)
@@ -147,11 +177,11 @@ loss_fn = nn.MSELoss()
 
 optimiser = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
-epochs = 10000
+epochs = 700
 for t in range(epochs):
     print(f"Epoch {t+1}\n-------------------------------")
     train_loop(train_dataloader, model, loss_fn, optimiser, device)
     test_loop(test_dataloader, model, loss_fn, device)
 print("Done!")
 
-human_test_loop(test_dataloader, model, vranges, mins, device)
+mase(test_dataloader, model, device)
