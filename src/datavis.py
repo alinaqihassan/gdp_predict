@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import json
 
-with open('../data/quarterly_data.json', 'r') as file:
+with open(f"../data/{input("data filename (.json)? ")}.json", 'r') as file:
     data = json.load(file)
 
 dates = [dt.datetime.strptime(d,'%Y-%m-%d').date() for d in data.keys()]

@@ -125,7 +125,7 @@ loss_fn = nn.MSELoss()
 
 optimiser = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
-epochs = 5000
+epochs = 10000
 for t in range(epochs):
     print(f"Epoch {t+1}\n-------------------------------")
     train_loop(train_dataloader, model, loss_fn, optimiser, device)
