@@ -94,6 +94,28 @@ def test_loop(dataloader, model, loss_fn, device):
 
     print(f"Test Error: \nAvg loss: {test_loss:>8f} \n")
 
+def human_test_loop(dataloader, model, vranges, mins, device):
+    # Set the model to evaluation mode - important for batch normalization and dropout layers
+    # Unnecessary in this situation but added for best practices
+    model.eval()
+    size = len(dataloader.dataset)
+
+    # Evaluating the model with torch.no_grad() ensures that no gradients are computed during test mode
+    # also serves to reduce unnecessary gradient computations and memory usage for tensors with requires_grad=True
+    with torch.no_grad():
+        for X, y in dataloader:
+            X = X.to(device=device)
+            y = y.to(device=device).unsqueeze(1)
+            pred = model(X)
+            output = pred.cpu().detach().numpy()
+            X = X.cpu().detach().numpy()
+            y = y.cpu().detach().numpy()
+            for i in range(X.shape[0]):
+                print(f"input: {X[i]*vranges+mins}")
+                print(f"predicted: {output[i]*vranges[0]+mins[0]}")
+                print(f"real value: {y[i]*vranges[0]+mins[0]}")
+
+
 with open("../data/quarterly_data.json", "r") as file:
     dict_data = json.load(file)
 
@@ -132,11 +154,4 @@ for t in range(epochs):
     test_loop(test_dataloader, model, loss_fn, device)
 print("Done!")
 
-test = np.array([[[14715.058, 0.7112145553268009, 0.7749999999999999], [14706.538, 1.13677364185591, 1.5608196721311474], [14865.701, 2.19534465606688, 2.23140625], [14898.999, 1.16305534624079, 2.341875]]])
-
-model.eval()
-with torch.no_grad():
-    logits = model(torch.from_numpy((test - mins)/vranges)
-                   .to(device=device, dtype=torch.float32))
-output = logits.cpu().detach().numpy()
-print(output*vranges[0]+mins[0])
+human_test_loop(test_dataloader, model, vranges, mins, device)
