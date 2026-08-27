@@ -1,3 +1,8 @@
+# neuralnet.py
+# implements data processing and the main training and testing loops for the model
+# provides a MASE test value and plots the predictions of the model vs the naïve model
+# and the true value, as well as comparing the error of the model to that of the naïve model
+
 import torch, json
 import numpy as np
 from torch import nn
@@ -6,10 +11,12 @@ import datetime as dt
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
+# hyperparameters
 learning_rate = 1e-3
 batch_size = 16
 epochs = 20000
 
+# setting up a dataset class to hold data and be queried by the model
 class TimeSeriesDataset(Dataset):
     def __init__(self, X, y, prev_vals):
         self.X = X
@@ -22,6 +29,7 @@ class TimeSeriesDataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx], self.prev_vals[idx]
 
+# Defining neural network structure and forward propagation
 class NeuralNetwork(nn.Module):
     def __init__(self):
         super().__init__()
@@ -39,6 +47,7 @@ class NeuralNetwork(nn.Module):
         logits = self.linear_lrelu_stack(x)
         return logits
 
+# standardise the data and create a sliding window view then create inputs and outputs arrays
 def create_dataset(data, window=4):
     eps = 1e-8
 
@@ -57,14 +66,9 @@ def create_dataset(data, window=4):
 
     return X, torch.tensor(y).float(), torch.tensor(prev_vals_std).float(), mean, std
 
-def pytorch_rolling_window(x, window_size, step_size=1):
-    # unfold dimension to make our rolling window
-    return x.unfold(0,window_size,step_size)
-
+# train the model and print training loss data
 def train_loop(dataloader, model, loss_fn, optimiser, device):
     size = len(dataloader.dataset)
-    # Set the model to training mode - important for batch normalisation and dropout layers
-    # Unnecessary in this situation but added for best practices
     model.train()
     for batch, (X, y, _) in enumerate(dataloader):
         # Compute prediction and loss
@@ -82,16 +86,12 @@ def train_loop(dataloader, model, loss_fn, optimiser, device):
             loss, current = loss.item(), batch * batch_size + len(X)
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
+# test the model after each epoch and print testing loss
 def test_loop(dataloader, model, loss_fn, device):
-    # Set the model to evaluation mode - important for batch normalization and dropout layers
-    # Unnecessary in this situation but added for best practices
     model.eval()
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
     test_loss = 0
-
-    # Evaluating the model with torch.no_grad() ensures that no gradients are computed during test mode
-    # also serves to reduce unnecessary gradient computations and memory usage for tensors with requires_grad=True
     with torch.no_grad():
         for X, y, _ in dataloader:
             X = X.to(device=device)
@@ -103,6 +103,7 @@ def test_loop(dataloader, model, loss_fn, device):
 
     print(f"Test Error: \nAvg loss: {test_loss:>8f} \n")
 
+# test the model after training and calculate and print MASE value
 def mase(dataloader, model, device, mean, std):
     model.eval()
     
@@ -153,7 +154,7 @@ def mase(dataloader, model, device, mean, std):
 with open("../data/quarterly_data.json", "r") as file:
     dict_data = json.load(file)
 
-data_list = list(dict_data.values())
+data_list = list(dict_data.values()) 
 
 data = np.array(data_list)
 
@@ -171,16 +172,16 @@ test_dataset = TimeSeriesDataset(X_test, y_test, prev_test)
 train_dataloader = DataLoader(training_dataset, batch_size=batch_size, shuffle=False)
 test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cuda" if torch.cuda.is_available() else "cpu" # use Nvidia GPU if available
 print(f"Using {device} device")
 
-model = NeuralNetwork().to(device)
+model = NeuralNetwork().to(device) # move the model to the GPU if available
 
-loss_fn = nn.MSELoss()
+loss_fn = nn.MSELoss() # mean squared error loss function
 
-optimiser = torch.optim.SGD(model.parameters(), lr=learning_rate)
+optimiser = torch.optim.SGD(model.parameters(), lr=learning_rate) # Stochastic Gradient Descent
 
-for t in range(epochs):
+for t in range(epochs): # loop through each epoch, training the model and testing (validating)
     print(f"Epoch {t+1}\n-------------------------------")
     train_loop(train_dataloader, model, loss_fn, optimiser, device)
     test_loop(test_dataloader, model, loss_fn, device)
@@ -199,6 +200,7 @@ true_vals = list(true_vals)
 naive_vals = list(naive_vals)
 predicted_vals = list(predicted_vals)
 
+# plot the naïve error compared to the model's error and the naïve and model predictions compared to the true values
 fig, (ax1, ax2) = plt.subplots(2, 1)
 
 ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))

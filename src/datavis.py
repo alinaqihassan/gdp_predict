@@ -1,3 +1,6 @@
+# datavis.py
+# plots the dataset using matplotlib
+
 import datetime as dt
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
